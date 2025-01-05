@@ -1,98 +1,272 @@
 #!/usr/bin/python3
-"""This is the place class"""
-from models.base_model import BaseModel, Base
+"""Defines the HBNB console."""
+import cmd
+from shlex import split
+from models import storage
+from datetime import datetime
+from models.base_model import BaseModel
+from models.user import User
+from models.state import State
+from models.city import City
+from models.amenity import Amenity
+from models.place import Place
 from models.review import Review
-from models.amenity import Amenity, place_amenity
-from os import getenv
-from sqlalchemy import Column, String, Integer, Float, ForeignKey
-from sqlalchemy.orm import relationship
-import models
 
 
-class Place(BaseModel, Base):
-    """Represents a Place for a MySQL database.
+class HBNBCommand(cmd.Cmd):
+    """Defines the HolbertonBnB command interpreter."""
 
-    Inherits from SQLAlchemy Base and links to the MySQL table places.
+    prompt = "(hbnb) "
+    __classes = {
+        "BaseModel",
+        "User",
+        "State",
+        "City",
+        "Amenity",
+        "Place",
+        "Review"
+    }
 
-    Attributes:
-        __tablename__ (str): The name of the MySQL table to store places.
-        city_id (sqlalchemy String): The place's city id.
-        user_id (sqlalchemy String): The place's user id.
-        name (sqlalchemy String): The name.
-        description (sqlalchemy String): The description.
-        number_rooms (sqlalchemy Integer): The number of rooms.
-        number_bathrooms (sqlalchemy Integer): The number of bathrooms.
-        max_guest (sqlalchemy Integer): The maximum number of guests.
-        price_by_night (sqlalchemy Integer): The price by night.
-        latitude (sqlalchemy Float): The place's latitude.
-        longitude (sqlalchemy Float): The place's longitude.
-        reviews (sqlalchemy relationship): The user-Review relationship.
-        amenities (sqlalchemy relationship): The user-Amenity relationship.
-        amenity_ids (list): id list of all linked amenities
+    def emptyline(self):
+        """Ignore empty spaces."""
+        pass
 
-    """
+    def do_quit(self, line):
+        """Quit command to exit the program."""
+        return True
 
-    __tablename__ = "places"
+    def do_EOF(self, line):
+        """EOF signal to exit the program."""
+        print("")
+        return True
 
-    if getenv('HBNB_TYPE_STORAGE') == "db":
-        city_id = Column(String(60), ForeignKey("cities.id"), nullable=False)
-        user_id = Column(String(60), ForeignKey("users.id"), nullable=False)
-        name = Column(String(128), nullable=False)
-        description = Column(String(128))
-        number_rooms = Column(Integer, default=0)
-        number_bathrooms = Column(Integer, default=0)
-        max_guest = Column(Integer, default=0)
-        price_by_night = Column(Integer, default=0)
-        latitude = Column(Float)
-        longitude = Column(Float)
-        reviews = relationship("Review", backref="place", cascade="delete")
-        amenities = relationship('Amenity', secondary=place_amenity,
-                                 back_populates='place_amenities',
-                                 viewonly=False)
-        amenity_ids = []
-    else:
-        city_id = ''
-        user_id = ''
-        name = ''
-        description = ''
-        number_rooms = 0
-        number_bathrooms = 0
-        max_guest = 0
-        price_by_night = 0
-        latitude = 0.0
-        longitude = 0.0
-        amenity_ids = []
+    def do_create(self, line):
+        """Usage: create <class> <key 1>=<value 2> <key 2>=<value 2> ...
+        Create a new class instance with given keys/values and print its id.
+        """
+        try:
+            if not line:
+                raise SyntaxError()
+            my_list = line.split(" ")
 
-        @property
-        def reviews(self):
-            """Get a list of all linked Reviews.
-            """
+            kwargs = {}
+            for i in range(1, len(my_list)):
+                key, value = tuple(my_list[i].split("="))
+                if value[0] == '"':
+                    value = value.strip('"').replace("_", " ")
+                else:
+                    try:
+                        value = eval(value)
+                    except (SyntaxError, NameError):
+                        continue
+                kwargs[key] = value
 
-            review_list = []
+            if kwargs == {}:
+                obj = eval(my_list[0])()
+            else:
+                obj = eval(my_list[0])(**kwargs)
+                storage.new(obj)
+            print(obj.id)
+            obj.save()
 
-            for review in models.storage.all(Review).values():
-                if review.place_id == self.id:
-                    review_list.append(review)
+        except SyntaxError:
+            print("** class name missing **")
+        except NameError:
+            print("** class doesn't exist **")
 
-            return review_list
+    def do_show(self, line):
+        """Prints the string representation of an instance
+        Exceptions:
+            SyntaxError: when there is no args given
+            NameError: when there is no object taht has the name
+            IndexError: when there is no id given
+            KeyError: when there is no valid id given
+        """
+        try:
+            if not line:
+                raise SyntaxError()
+            my_list = line.split(" ")
+            if my_list[0] not in self.__classes:
+                raise NameError()
+            if len(my_list) < 2:
+                raise IndexError()
+            objects = storage.all()
+            key = my_list[0] + '.' + my_list[1]
+            if key in objects:
+                print(objects[key])
+            else:
+                raise KeyError()
+        except SyntaxError:
+            print("** class name missing **")
+        except NameError:
+            print("** class doesn't exist **")
+        except IndexError:
+            print("** instance id missing **")
+        except KeyError:
+            print("** no instance found **")
 
-        @property
-        def amenities(self):
-            """Get and Set linked Amenities.
-            """
+    def do_destroy(self, line):
+        """Deletes an instance based on the class name and id
+        Exceptions:
+            SyntaxError: when there is no args given
+            NameError: when there is no object taht has the name
+            IndexError: when there is no id given
+            KeyError: when there is no valid id given
+        """
+        try:
+            if not line:
+                raise SyntaxError()
+            my_list = line.split(" ")
+            if my_list[0] not in self.__classes:
+                raise NameError()
+            if len(my_list) < 2:
+                raise IndexError()
+            objects = storage.all()
+            key = my_list[0] + '.' + my_list[1]
+            if key in objects:
+                del objects[key]
+                storage.save()
+            else:
+                raise KeyError()
+        except SyntaxError:
+            print("** class name missing **")
+        except NameError:
+            print("** class doesn't exist **")
+        except IndexError:
+            print("** instance id missing **")
+        except KeyError:
+            print("** no instance found **")
 
-            amenity_list = []
+    def do_all(self, line):
+        """Usage: all or all <class> or <class>.all()
+        Display string representations of all instances of a given class.
+        If no class is specified, displays all instantiated objects."""
+        if not line:
+            o = storage.all()
+            print([o[k].__str__() for k in o])
+            return
+        try:
+            args = line.split(" ")
+            if args[0] not in self.__classes:
+                raise NameError()
 
-            for amenity in models.storage.all(Amenity).values():
-                if amenity.id in self.amenity_ids:
-                    amenity_list.append(amenity)
+            o = storage.all(eval(args[0]))
+            print([o[k].__str__() for k in o])
 
-            return amenity_list
+        except NameError:
+            print("** class doesn't exist **")
 
-        @amenities.setter
-        def amenities(self, value):
-            """Adding an Amenity.id to the amenity_ids
-            """
+    def do_update(self, line):
+        """Updates an instanceby adding or updating attribute
+        Exceptions:
+            SyntaxError: when there is no args given
+            NameError: when there is no object taht has the name
+            IndexError: when there is no id given
+            KeyError: when there is no valid id given
+            AttributeError: when there is no attribute given
+            ValueError: when there is no value given
+        """
+        try:
+            if not line:
+                raise SyntaxError()
+            my_list = split(line, " ")
+            if my_list[0] not in self.__classes:
+                raise NameError()
+            if len(my_list) < 2:
+                raise IndexError()
+            objects = storage.all()
+            key = my_list[0] + '.' + my_list[1]
+            if key not in objects:
+                raise KeyError()
+            if len(my_list) < 3:
+                raise AttributeError()
+            if len(my_list) < 4:
+                raise ValueError()
+            v = objects[key]
+            try:
+                v.__dict__[my_list[2]] = eval(my_list[3])
+            except Exception:
+                v.__dict__[my_list[2]] = my_list[3]
+                v.save()
+        except SyntaxError:
+            print("** class name missing **")
+        except NameError:
+            print("** class doesn't exist **")
+        except IndexError:
+            print("** instance id missing **")
+        except KeyError:
+            print("** no instance found **")
+        except AttributeError:
+            print("** attribute name missing **")
+        except ValueError:
+            print("** value missing **")
 
-            if type(value) == Amenity:
-                self.amenity_ids.append(value.id)
+    def count(self, line):
+        """count the number of instances of a class
+        """
+        counter = 0
+        try:
+            my_list = split(line, " ")
+            if my_list[0] not in self.__classes:
+                raise NameError()
+            objects = storage.all()
+            for key in objects:
+                name = key.split('.')
+                if name[0] == my_list[0]:
+                    counter += 1
+            print(counter)
+        except NameError:
+            print("** class doesn't exist **")
+
+    def strip_clean(self, args):
+        """strips the argument and return a string of command
+        Args:
+            args: input list of args
+        Return:
+            returns string of argumetns
+        """
+        new_list = []
+        new_list.append(args[0])
+        try:
+            my_dict = eval(
+                args[1][args[1].find('{'):args[1].find('}')+1])
+        except Exception:
+            my_dict = None
+        if isinstance(my_dict, dict):
+            new_str = args[1][args[1].find('(')+1:args[1].find(')')]
+            new_list.append(((new_str.split(", "))[0]).strip('"'))
+            new_list.append(my_dict)
+            return new_list
+        new_str = args[1][args[1].find('(')+1:args[1].find(')')]
+        new_list.append(" ".join(new_str.split(", ")))
+        return " ".join(i for i in new_list)
+
+    def default(self, line):
+        """retrieve all instances of a class and
+        retrieve the number of instances
+        """
+        my_list = line.split('.')
+        if len(my_list) >= 2:
+            if my_list[1] == "all()":
+                self.do_all(my_list[0])
+            elif my_list[1] == "count()":
+                self.count(my_list[0])
+            elif my_list[1][:4] == "show":
+                self.do_show(self.strip_clean(my_list))
+            elif my_list[1][:7] == "destroy":
+                self.do_destroy(self.strip_clean(my_list))
+            elif my_list[1][:6] == "update":
+                args = self.strip_clean(my_list)
+                if isinstance(args, list):
+                    obj = storage.all()
+                    key = args[0] + ' ' + args[1]
+                    for k, v in args[2].items():
+                        self.do_update(key + ' "{}" "{}"'.format(k, v))
+                else:
+                    self.do_update(args)
+        else:
+            cmd.Cmd.default(self, line)
+
+
+if __name__ == '__main__':
+    HBNBCommand().cmdloop()

@@ -14,7 +14,7 @@ class Place(BaseModel, Base):
 
     Inherits from SQLAlchemy Base and links to the MySQL table places.
 
-    Attributes:
+    tributes:
         __tablename__ (str): The name of the MySQL table to store places.
         city_id (sqlalchemy String): The place's city id.
         user_id (sqlalchemy String): The place's user id.
